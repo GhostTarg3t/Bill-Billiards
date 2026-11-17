@@ -17,43 +17,41 @@ public class BallCameraTarget : MonoBehaviour
     private float yaw;
     private float pitch;
 
-    void Start()
+    private void Awake()
     {
-        if (ball == null) return;
-
-        input = ball.GetComponent<StarterAssetsInputs>();
-
         yaw = transform.eulerAngles.y;
-        pitch = transform.eulerAngles.x;
+        pitch = NormalizeAngle(transform.eulerAngles.x);
+        CacheInput();
     }
 
-    
-void LateUpdate()
-{
-    if (ball == null || input == null)
-        return;
 
-    // A câmera acompanha a posição da bola
-    transform.position = ball.position +
-                         Vector3.up * height;
+    private void LateUpdate()
+    {
+        if (ball == null)
+            return;
 
-    // Recebe o movimento do mouse
-    Vector2 lookInput = input.look;
+        transform.position = ball.position + Vector3.up * height;
 
-    // Permite girar a câmera ao mesmo tempo
-    // que movimenta a bola
-    yaw += lookInput.x * sensitivity;
-    pitch -= lookInput.y * sensitivity;
+        if (input == null)
+            CacheInput();
 
-    pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        if (input == null)
+            return;
 
-    transform.rotation = Quaternion.Euler(
-        pitch,
-        yaw,
-        0f
-    );
+        Vector2 lookInput = input.look;
+        yaw += lookInput.x * sensitivity;
+        pitch = Mathf.Clamp(pitch + lookInput.y * sensitivity, minPitch, maxPitch);
+        transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+    }
 
-    Debug.Log("Mouse: " + input.look);
+    private void CacheInput()
+    {
+        if (ball != null)
+            input = ball.GetComponent<StarterAssetsInputs>();
+    }
+
+    private static float NormalizeAngle(float angle)
+    {
+        return angle > 180f ? angle - 360f : angle;
+    }
 }
-
-}   
