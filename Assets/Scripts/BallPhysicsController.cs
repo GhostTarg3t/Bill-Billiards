@@ -9,9 +9,16 @@ public class BallPhysicsController : MonoBehaviour
     public float acceleration = 18f;
     public float maxSpeed = 6f;
 
+    [Header("Dash / Tacada")]
+    public float dashImpulse = 1.2f;
+    public float dashCooldown = 1f;
+
     private Rigidbody rb;
     private StarterAssetsInputs input;
     private Transform cameraTransform;
+
+    private float nextDashTime;
+    private bool dashRequested;
 
     void Awake()
     {
@@ -22,6 +29,16 @@ public class BallPhysicsController : MonoBehaviour
             cameraTransform = Camera.main.transform;
     }
 
+    void Update()
+    {
+        // Detecta o espaço pelo Starter Assets
+        if (input != null && input.jump)
+        {
+            dashRequested = true;
+            input.jump = false;
+        }
+    }
+
     void FixedUpdate()
     {
         if (cameraTransform == null || input == null)
@@ -30,8 +47,8 @@ public class BallPhysicsController : MonoBehaviour
         Vector3 forward = cameraTransform.forward;
         Vector3 right = cameraTransform.right;
 
-        forward.y = 0;
-        right.y = 0;
+        forward.y = 0f;
+        right.y = 0f;
 
         forward.Normalize();
         right.Normalize();
@@ -42,6 +59,7 @@ public class BallPhysicsController : MonoBehaviour
 
         direction = Vector3.ClampMagnitude(direction, 1f);
 
+        // Movimentação normal
         Vector3 velocity = rb.linearVelocity;
         Vector3 horizontalVelocity =
             new Vector3(velocity.x, 0, velocity.z);
@@ -57,6 +75,26 @@ public class BallPhysicsController : MonoBehaviour
                 );
             }
         }
+
+        // Tacada
+        if (dashRequested)
+        {
+            dashRequested = false;
+
+            if (Time.time >= nextDashTime)
+            {
+                Vector3 dashDirection =
+                    direction.sqrMagnitude > 0.01f
+                    ? direction.normalized
+                    : forward;
+
+                rb.AddForce(
+                    dashDirection * dashImpulse,
+                    ForceMode.Impulse
+                );
+
+                nextDashTime = Time.time + dashCooldown;
+            }
+        }
     }
 }
-    
