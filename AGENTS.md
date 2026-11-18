@@ -8,7 +8,7 @@
   - Layers:
     - Default, TransparentFX, Ignore Raycast, Water, UI
 - Active game object:
-  - Name: BolaAlvo
-  - Tag: Untagged
+  - Name: PlayerCameraRoot
+  - Tag: CinemachineTarget
   - Layer: Default
 <!-- UNITY CODE ASSIST INSTRUCTIONS END -->

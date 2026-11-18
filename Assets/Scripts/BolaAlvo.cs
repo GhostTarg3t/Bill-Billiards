@@ -5,24 +5,23 @@ using UnityEngine;
 [RequireComponent(typeof(SphereCollider))]
 public class BolaAlvo : MonoBehaviour
 {
-    [Header("Área segura da mesa")]
-    public Transform centroMesa;
-    public float limiteX = 1f;
-    public float limiteZ = 2f;
+    [Header("Área segura")]
+    public BoxCollider areaSegura;
+    public float margemExtra = 0.2f;
 
-    [Header("Movimentação automática")]
+    [Header("Movimentação")]
     public float velocidade = 1.5f;
 
-    [Header("Impulso ao ser atingida")]
+    [Header("Colisão com jogador")]
     public float impulsoMinimo = 0.2f;
     public float multiplicadorImpulso = 0.1f;
 
     private Rigidbody rb;
-    private SphereCollider sphere;
-    private Vector3 destino;
+    private SphereCollider esfera;
 
-    private float altura;
+    private Vector3 destino;
     private float raio;
+    private float altura;
 
     private bool atingida = false;
     private bool pontuada = false;
@@ -30,56 +29,118 @@ public class BolaAlvo : MonoBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
-        sphere = GetComponent<SphereCollider>();
+        esfera = GetComponent<SphereCollider>();
 
-        // Protegida enquanto se movimenta sozinha
         rb.isKinematic = true;
         rb.useGravity = false;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
-        rb.collisionDetectionMode =
-            CollisionDetectionMode.ContinuousSpeculative;
     }
 
     void Start()
     {
-        if (centroMesa == null)
+        if (areaSegura == null)
         {
-            Debug.LogError("Configure Centro Mesa!", this);
+            Debug.LogError("Área segura não configurada!");
             enabled = false;
             return;
         }
 
-        raio = sphere.radius * Mathf.Max(
-            Mathf.Abs(transform.lossyScale.x),
-            Mathf.Abs(transform.lossyScale.y),
-            Mathf.Abs(transform.lossyScale.z)
+        Vector3 escala = transform.lossyScale;
+
+        raio = esfera.radius * Mathf.Max(
+            Mathf.Abs(escala.x),
+            Mathf.Abs(escala.y),
+            Mathf.Abs(escala.z)
         );
 
-        // CentroMesa deve estar na altura do feltro
-        altura = centroMesa.position.y + raio;
+        // O topo do Box Collider deve coincidir
+        // com a superfície da mesa.
+        altura = areaSegura.bounds.max.y + raio;
 
-        rb.position = new Vector3(
-            rb.position.x,
-            altura,
-            rb.position.z
-        );
+        // Corrige a posição inicial da bola
+        rb.position = LimitarNaArea(rb.position);
 
         EscolherDestino();
     }
 
+    float LimiteX()
+    {
+        float escala = Mathf.Max(
+            0.0001f,
+            Mathf.Abs(areaSegura.transform.lossyScale.x)
+        );
+
+        return Mathf.Max(
+            0f,
+            areaSegura.size.x / 2f
+            - (raio + margemExtra) / escala
+        );
+    }
+
+    float LimiteZ()
+    {
+        float escala = Mathf.Max(
+            0.0001f,
+            Mathf.Abs(areaSegura.transform.lossyScale.z)
+        );
+
+        return Mathf.Max(
+            0f,
+            areaSegura.size.z / 2f
+            - (raio + margemExtra) / escala
+        );
+    }
+
+    Vector3 LimitarNaArea(Vector3 posicao)
+    {
+        Transform area = areaSegura.transform;
+
+        // Converte a posição para o espaço local
+        Vector3 local = area.InverseTransformPoint(posicao);
+        Vector3 centro = areaSegura.center;
+
+        local.x = Mathf.Clamp(
+            local.x,
+            centro.x - LimiteX(),
+            centro.x + LimiteX()
+        );
+
+        local.z = Mathf.Clamp(
+            local.z,
+            centro.z - LimiteZ(),
+            centro.z + LimiteZ()
+        );
+
+        local.y = centro.y;
+
+        Vector3 resultado = area.TransformPoint(local);
+        resultado.y = altura;
+
+        return resultado;
+    }
+
+    void EscolherDestino()
+    {
+        Vector3 centro = areaSegura.center;
+
+        Vector3 local = centro + new Vector3(
+            Random.Range(-LimiteX(), LimiteX()),
+            0f,
+            Random.Range(-LimiteZ(), LimiteZ())
+        );
+
+        destino = areaSegura.transform.TransformPoint(local);
+        destino.y = altura;
+    }
+
     void FixedUpdate()
     {
-        if (atingida || centroMesa == null)
+        if (atingida || areaSegura == null)
             return;
 
-        Vector3 atual = LimitarPosicaoSegura(rb.position);
+        Vector3 atual = rb.position;
 
-        if (atual != rb.position)
-            rb.position = atual;
-
-        Vector3 diferenca = destino - atual;
-
-        if (diferenca.sqrMagnitude < 0.04f)
+        if (Vector3.Distance(atual, destino) < 0.1f)
         {
             EscolherDestino();
         }
@@ -89,81 +150,29 @@ public class BolaAlvo : MonoBehaviour
             destino,
             velocidade * Time.fixedDeltaTime
         );
-        proxima = LimitarPosicaoSegura(proxima);
 
-        Vector3 deslocamento = proxima - atual;
+        // Impede a bola de ultrapassar a área
+        proxima = LimitarNaArea(proxima);
+
+        Vector3 movimento = proxima - atual;
 
         rb.MovePosition(proxima);
 
-        // Simula a rolagem enquanto está cinemática
-        if (deslocamento.sqrMagnitude > 0.000001f)
+        if (movimento.sqrMagnitude > 0.000001f)
         {
             Vector3 eixo = Vector3.Cross(
                 Vector3.up,
-                deslocamento.normalized
+                movimento.normalized
             );
 
-            float angulo =
-                deslocamento.magnitude / raio *
-                Mathf.Rad2Deg;
+            float angulo = movimento.magnitude /
+                           raio * Mathf.Rad2Deg;
 
             rb.MoveRotation(
                 Quaternion.AngleAxis(angulo, eixo)
                 * rb.rotation
             );
         }
-    }
-
-    void EscolherDestino()
-    {
-        float margemX = raio / Mathf.Max(
-            Mathf.Abs(centroMesa.lossyScale.x),
-            0.0001f
-        );
-        float margemZ = raio / Mathf.Max(
-            Mathf.Abs(centroMesa.lossyScale.z),
-            0.0001f
-        );
-
-        float limiteSeguroX = Mathf.Max(0f, limiteX - margemX);
-        float limiteSeguroZ = Mathf.Max(0f, limiteZ - margemZ);
-
-        Vector3 posicaoLocal = new Vector3(
-            Random.Range(-limiteSeguroX, limiteSeguroX),
-            0f,
-            Random.Range(-limiteSeguroZ, limiteSeguroZ)
-        );
-
-        destino = centroMesa.TransformPoint(posicaoLocal);
-        destino.y = altura;
-    }
-
-    private Vector3 LimitarPosicaoSegura(Vector3 posicao)
-    {
-        Vector3 posicaoLocal = centroMesa.InverseTransformPoint(posicao);
-        float margemX = raio / Mathf.Max(
-            Mathf.Abs(centroMesa.lossyScale.x),
-            0.0001f
-        );
-        float margemZ = raio / Mathf.Max(
-            Mathf.Abs(centroMesa.lossyScale.z),
-            0.0001f
-        );
-
-        posicaoLocal.x = Mathf.Clamp(
-            posicaoLocal.x,
-            -Mathf.Max(0f, limiteX - margemX),
-            Mathf.Max(0f, limiteX - margemX)
-        );
-        posicaoLocal.z = Mathf.Clamp(
-            posicaoLocal.z,
-            -Mathf.Max(0f, limiteZ - margemZ),
-            Mathf.Max(0f, limiteZ - margemZ)
-        );
-
-        Vector3 posicaoSegura = centroMesa.TransformPoint(posicaoLocal);
-        posicaoSegura.y = altura;
-        return posicaoSegura;
     }
 
     void OnCollisionEnter(Collision collision)
@@ -173,14 +182,13 @@ public class BolaAlvo : MonoBehaviour
 
         BallPhysicsController jogador =
             collision.collider.GetComponentInParent
-                <BallPhysicsController>();
+            <BallPhysicsController>();
 
         if (jogador == null)
             return;
 
         atingida = true;
 
-        // Agora a bola obedece à física
         rb.isKinematic = false;
         rb.useGravity = true;
         rb.collisionDetectionMode =
@@ -227,28 +235,5 @@ public class BolaAlvo : MonoBehaviour
 
         pontuada = true;
         return true;
-    }
-
-    void OnDrawGizmosSelected()
-    {
-        if (centroMesa == null)
-            return;
-
-        Gizmos.color = Color.green;
-
-        Matrix4x4 anterior = Gizmos.matrix;
-
-        Gizmos.matrix = Matrix4x4.TRS(
-            centroMesa.position,
-            centroMesa.rotation,
-            Vector3.one
-        );
-
-        Gizmos.DrawWireCube(
-            Vector3.zero,
-            new Vector3(limiteX * 2f, 0.02f, limiteZ * 2f)
-        );
-
-        Gizmos.matrix = anterior;
     }
 }
